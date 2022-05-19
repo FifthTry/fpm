@@ -108,6 +108,7 @@ pub struct Section {
     pub extra_data: std::collections::BTreeMap<String, String>,
     pub is_active: bool,
     pub nav_title: Option<String>,
+    pub variant: Option<String>,
     pub subsections: Vec<Subsection>,
 }
 
@@ -121,6 +122,7 @@ pub struct Subsection {
     pub extra_data: std::collections::BTreeMap<String, String>,
     pub is_active: bool,
     pub nav_title: Option<String>,
+    pub variant: Option<String>,
     pub toc: Vec<TocItem>,
 }
 
@@ -135,6 +137,7 @@ impl Default for Subsection {
             extra_data: Default::default(),
             is_active: false,
             nav_title: None,
+            variant: None,
             toc: vec![],
         }
     }
@@ -149,6 +152,7 @@ pub struct TocItem {
     pub extra_data: std::collections::BTreeMap<String, String>,
     pub is_active: bool,
     pub nav_title: Option<String>,
+    pub variant: Option<String>,
     pub children: Vec<TocItem>,
 }
 
@@ -252,6 +256,15 @@ impl SitemapElement {
             SitemapElement::TocItem(s) => &mut s.nav_title,
         };
         *nav = nav_title;
+    }
+
+    pub(crate) fn set_variant(&mut self, variant: Option<String>) {
+        let var = match self {
+            SitemapElement::Section(s) => &mut s.variant,
+            SitemapElement::Subsection(s) => &mut s.variant,
+            SitemapElement::TocItem(s) => &mut s.variant,
+        };
+        *var = variant;
     }
 
     pub(crate) fn get_title(&self) -> Option<String> {
@@ -467,6 +480,9 @@ impl SitemapParser {
                         }
                         if k.eq("nav-title") {
                             i.set_nav_title(Some(v.to_string()));
+                        }
+                        if k.eq("variant") {
+                            i.set_variant(Some(v.to_string()));
                         }
                         i.insert_key_value(k, v);
                     }
@@ -793,6 +809,20 @@ impl Sitemap {
         }
     }
 
+    fn get_url_with_variant(id: &str, variant: &Option<String>) -> Option<String> {
+        if let Some(variant) = variant {
+            return Some(format!(
+                "{}/-/{}",
+                id.replace("index.html", "").trim_matches('/'),
+                variant.trim_start_matches('/')
+            ));
+        }
+        if id.starts_with("-/") {
+            return Some(id.to_string());
+        }
+        None
+    }
+
     /// `get_all_locations` returns the list of tuple containing the following values:
     /// (
     ///     file_location: &camino::Utf8PathBuf, // The location of the document in the file system.
@@ -814,7 +844,10 @@ impl Sitemap {
                 locations.push((
                     file_location,
                     &section.translation_file_location,
-                    get_id(section.id.as_str()),
+                    fpm::sitemap::Sitemap::get_url_with_variant(
+                        section.id.as_str(),
+                        &section.variant,
+                    ),
                 ));
             }
             for subsection in section.subsections.iter() {
@@ -823,7 +856,16 @@ impl Sitemap {
                         locations.push((
                             file_location,
                             &subsection.translation_file_location,
-                            subsection.id.as_ref().map(|v| get_id(v.as_str())).flatten(),
+                            subsection
+                                .id
+                                .as_ref()
+                                .map(|v| {
+                                    fpm::sitemap::Sitemap::get_url_with_variant(
+                                        v.as_str(),
+                                        &subsection.variant,
+                                    )
+                                })
+                                .flatten(),
                         ));
                     }
                 }
@@ -832,7 +874,10 @@ impl Sitemap {
                         locations.push((
                             file_location,
                             &toc.translation_file_location,
-                            get_id(toc.id.as_str()),
+                            fpm::sitemap::Sitemap::get_url_with_variant(
+                                toc.id.as_str(),
+                                &toc.variant,
+                            ),
                         ));
                     }
                     locations.extend(get_toc_locations(toc));
@@ -840,13 +885,6 @@ impl Sitemap {
             }
         }
         return locations;
-
-        fn get_id(id: &str) -> Option<String> {
-            if id.contains("-/") {
-                return Some(id.to_string());
-            }
-            None
-        }
 
         fn get_toc_locations(
             toc: &fpm::sitemap::TocItem,
@@ -861,7 +899,10 @@ impl Sitemap {
                     locations.push((
                         file_location,
                         &child.translation_file_location,
-                        get_id(child.id.as_str()),
+                        fpm::sitemap::Sitemap::get_url_with_variant(
+                            child.id.as_str(),
+                            &child.variant,
+                        ),
                     ));
                 }
                 locations.extend(get_toc_locations(child));
@@ -881,14 +922,26 @@ impl Sitemap {
         for (idx, section) in self.sections.iter().enumerate() {
             index = idx;
 
-            if ids_matches(section.id.as_str(), id) {
+            if fpm::sitemap::Sitemap::ids_matches(section.id.as_str(), &section.variant, id) {
                 subsections = section
                     .subsections
                     .iter()
                     .filter(|v| v.visible)
                     .map(|v| {
-                        let active = v.id.as_ref().map(|v| v.eq(id)).unwrap_or(false);
-                        let toc = TocItemCompat::new(v.id.clone(), v.title.clone(), active);
+                        let active =
+                            v.id.as_ref()
+                                .map(|id1| {
+                                    fpm::sitemap::Sitemap::ids_matches(id1.as_str(), &v.variant, id)
+                                })
+                                .unwrap_or(false);
+                        let url = v.id.as_ref().map(|id| {
+                            get_url(
+                                fpm::sitemap::Sitemap::get_url_with_variant(id, &v.variant)
+                                    .unwrap_or_else(|| id.to_string())
+                                    .as_str(),
+                            )
+                        });
+                        let toc = TocItemCompat::new(url, v.title.clone(), active);
                         if active {
                             let mut curr_subsection = toc.clone();
                             if let Some(ref title) = v.nav_title {
@@ -903,18 +956,28 @@ impl Sitemap {
                 if let Some(sub) = section
                     .subsections
                     .iter()
-                    .find_or_first(|v| v.id.as_ref().map(|v| v.eq(id)).unwrap_or(false))
+                    .find_or_first(|v| {
+                        v.id.as_ref()
+                            .map(|id1| {
+                                fpm::sitemap::Sitemap::ids_matches(id1.as_str(), &v.variant, id)
+                            })
+                            .unwrap_or(false)
+                    })
                     .or_else(|| section.subsections.first())
                 {
                     let (toc_list, current_toc) = get_all_toc(sub.toc.as_slice(), id);
                     toc.extend(toc_list);
                     current_page = current_toc;
                 }
-                let mut section_toc = TocItemCompat::new(
-                    Some(get_url(section.id.as_str())),
-                    section.title.clone(),
-                    true,
+                let url = get_url(
+                    fpm::sitemap::Sitemap::get_url_with_variant(
+                        section.id.as_str(),
+                        &section.variant,
+                    )
+                    .unwrap_or_else(|| section.id.to_string())
+                    .as_str(),
                 );
+                let mut section_toc = TocItemCompat::new(Some(url), section.title.clone(), true);
                 sections.push(section_toc.clone());
                 if let Some(ref title) = section.nav_title {
                     section_toc.title = Some(title.to_string());
@@ -930,11 +993,15 @@ impl Sitemap {
                 toc.extend(toc_list);
                 current_subsection = curr_subsection;
                 current_page = curr_toc;
-                let mut section_toc = TocItemCompat::new(
-                    Some(get_url(section.id.as_str())),
-                    section.title.clone(),
-                    true,
+                let url = get_url(
+                    fpm::sitemap::Sitemap::get_url_with_variant(
+                        section.id.as_str(),
+                        &section.variant,
+                    )
+                    .unwrap_or_else(|| section.id.to_string())
+                    .as_str(),
                 );
+                let mut section_toc = TocItemCompat::new(Some(url), section.title.clone(), true);
                 sections.push(section_toc.clone());
                 if let Some(ref title) = section.nav_title {
                     section_toc.title = Some(title.to_string());
@@ -943,17 +1010,21 @@ impl Sitemap {
                 break;
             }
 
-            sections.push(TocItemCompat::new(
-                Some(get_url(section.id.as_str())),
-                section.title.clone(),
-                false,
-            ));
+            let url = get_url(
+                fpm::sitemap::Sitemap::get_url_with_variant(section.id.as_str(), &section.variant)
+                    .unwrap_or_else(|| section.id.to_string())
+                    .as_str(),
+            );
+            sections.push(TocItemCompat::new(Some(url), section.title.clone(), false));
         }
-        sections.extend(
-            self.sections[index + 1..]
-                .iter()
-                .map(|v| TocItemCompat::new(Some(get_url(v.id.as_str())), v.title.clone(), false)),
-        );
+        sections.extend(self.sections[index + 1..].iter().map(|v| {
+            let url = get_url(
+                fpm::sitemap::Sitemap::get_url_with_variant(v.id.as_str(), &v.variant)
+                    .unwrap_or_else(|| v.id.to_string())
+                    .as_str(),
+            );
+            TocItemCompat::new(Some(url), v.title.clone(), false)
+        }));
         return Some(SiteMapCompat {
             sections,
             subsections,
@@ -962,21 +1033,6 @@ impl Sitemap {
             current_subsection,
             current_page,
         });
-
-        fn ids_matches(id1: &str, id2: &str) -> bool {
-            return strip_id(id1).eq(&strip_id(id2));
-
-            fn strip_id(id: &str) -> String {
-                let id = id
-                    .trim()
-                    .replace("/index.html", "/")
-                    .replace("index.html", "/");
-                if id.eq("/") {
-                    return id;
-                }
-                id.trim_matches('/').to_string()
-            }
-        }
 
         #[allow(clippy::type_complexity)]
         fn get_subsection_by_id(
@@ -1001,17 +1057,21 @@ impl Sitemap {
                     && subsection
                         .id
                         .as_ref()
-                        .map(|v| ids_matches(v, id))
+                        .map(|v| fpm::sitemap::Sitemap::ids_matches(v, &subsection.variant, id))
                         .unwrap_or(false)
                 {
                     let (toc_list, current_toc) = get_all_toc(subsection.toc.as_slice(), id);
                     toc.extend(toc_list);
                     current_page = current_toc;
-                    let mut subsection_toc = TocItemCompat::new(
-                        subsection.id.as_ref().map(|v| get_url(v.as_str())),
-                        subsection.title.clone(),
-                        true,
-                    );
+                    let url = subsection.id.as_ref().map(|id| {
+                        get_url(
+                            fpm::sitemap::Sitemap::get_url_with_variant(id, &subsection.variant)
+                                .unwrap_or_else(|| id.to_string())
+                                .as_str(),
+                        )
+                    });
+                    let mut subsection_toc =
+                        TocItemCompat::new(url, subsection.title.clone(), true);
                     subsection_list.push(subsection_toc.clone());
                     if let Some(ref title) = subsection.nav_title {
                         subsection_toc.title = Some(title.to_string());
@@ -1026,11 +1086,18 @@ impl Sitemap {
                     toc.extend(toc_list);
                     current_page = Some(current_toc);
                     if subsection.visible {
-                        let mut subsection_toc = TocItemCompat::new(
-                            subsection.id.as_ref().map(|v| get_url(v.as_str())),
-                            subsection.title.clone(),
-                            true,
-                        );
+                        let url = subsection.id.as_ref().map(|id| {
+                            get_url(
+                                fpm::sitemap::Sitemap::get_url_with_variant(
+                                    id,
+                                    &subsection.variant,
+                                )
+                                .unwrap_or_else(|| id.to_string())
+                                .as_str(),
+                            )
+                        });
+                        let mut subsection_toc =
+                            TocItemCompat::new(url, subsection.title.clone(), true);
                         subsection_list.push(subsection_toc.clone());
                         if let Some(ref title) = subsection.nav_title {
                             subsection_toc.title = Some(title.to_string());
@@ -1041,19 +1108,27 @@ impl Sitemap {
                     break;
                 }
 
-                subsection_list.push(TocItemCompat::new(
-                    subsection.id.as_ref().map(|v| get_url(v.as_str())),
-                    subsection.title.clone(),
-                    false,
-                ));
+                let url = subsection.id.as_ref().map(|id| {
+                    get_url(
+                        fpm::sitemap::Sitemap::get_url_with_variant(id, &subsection.variant)
+                            .unwrap_or_else(|| id.to_string())
+                            .as_str(),
+                    )
+                });
+                subsection_list.push(TocItemCompat::new(url, subsection.title.clone(), false));
             }
 
             if found {
-                subsection_list.extend(
-                    subsections[index + 1..]
-                        .iter()
-                        .map(|v| TocItemCompat::new(v.id.clone(), v.title.clone(), false)),
-                );
+                subsection_list.extend(subsections[index + 1..].iter().map(|v| {
+                    let url = v.id.as_ref().map(|id| {
+                        get_url(
+                            fpm::sitemap::Sitemap::get_url_with_variant(id, &v.variant)
+                                .unwrap_or_else(|| id.to_string())
+                                .as_str(),
+                        )
+                    });
+                    TocItemCompat::new(url, v.title.clone(), false)
+                }));
                 return Some((subsection_list, toc, current_subsection, current_page));
             }
             None
@@ -1086,10 +1161,22 @@ impl Sitemap {
                 let mut current_toc = {
                     let (is_active, children) =
                         get_toc_by_id_(id, toc_item.children.as_slice(), current_page);
+                    let url = get_url(
+                        fpm::sitemap::Sitemap::get_url_with_variant(
+                            toc_item.id.as_str(),
+                            &toc_item.variant,
+                        )
+                        .unwrap_or_else(|| toc_item.id.to_string())
+                        .as_str(),
+                    );
                     let mut current_toc = TocItemCompat::new(
-                        Some(get_url(toc_item.id.as_str()).to_string()),
+                        Some(url),
                         toc_item.title.clone(),
-                        ids_matches(toc_item.id.as_str(), id) || is_active,
+                        fpm::sitemap::Sitemap::ids_matches(
+                            toc_item.id.as_str(),
+                            &toc_item.variant,
+                            id,
+                        ) || is_active,
                     );
                     current_toc.children = children;
                     if is_active {
@@ -1101,7 +1188,11 @@ impl Sitemap {
                 toc_list.push(current_toc.clone());
 
                 if current_page.is_none() {
-                    found_here = ids_matches(toc_item.id.as_str(), id);
+                    found_here = fpm::sitemap::Sitemap::ids_matches(
+                        toc_item.id.as_str(),
+                        &toc_item.variant,
+                        id,
+                    );
                     if found_here {
                         if let Some(ref title) = toc_item.nav_title {
                             current_toc.title = Some(title.to_string());
@@ -1125,12 +1216,33 @@ impl Sitemap {
         }
     }
 
+    fn ids_matches(id1: &str, variant: &Option<String>, id2: &str) -> bool {
+        let id1 = if let Some(id) = fpm::sitemap::Sitemap::get_url_with_variant(id1, variant) {
+            id
+        } else {
+            id1.to_string()
+        };
+
+        return strip_id(id1.as_str()).eq(&strip_id(id2));
+
+        fn strip_id(id: &str) -> String {
+            let id = id
+                .trim()
+                .replace("/index.html", "/")
+                .replace("index.html", "/");
+            if id.eq("/") {
+                return id;
+            }
+            id.trim_matches('/').to_string()
+        }
+    }
+
     pub(crate) fn get_extra_data_by_id(
         &self,
         id: &str,
     ) -> Option<std::collections::BTreeMap<String, String>> {
         for section in self.sections.iter() {
-            if section.id.as_str().eq(id) {
+            if fpm::sitemap::Sitemap::ids_matches(section.id.as_str(), &section.variant, id) {
                 return Some(section.extra_data.to_owned());
             }
             if let Some(data) = get_extra_data_from_subsections(id, section.subsections.as_slice())
@@ -1147,7 +1259,13 @@ impl Sitemap {
             subsections: &[Subsection],
         ) -> Option<std::collections::BTreeMap<String, String>> {
             for subsection in subsections {
-                if subsection.visible && subsection.id.as_ref().unwrap_or(&"".to_string()).eq(id) {
+                if subsection.visible
+                    && fpm::sitemap::Sitemap::ids_matches(
+                        subsection.id.as_ref().unwrap_or(&"".to_string()),
+                        &subsection.variant,
+                        id,
+                    )
+                {
                     return Some(subsection.extra_data.to_owned());
                 }
                 if let Some(data) = get_extra_data_from_toc(id, subsection.toc.as_slice()) {
@@ -1164,7 +1282,7 @@ impl Sitemap {
             toc: &[TocItem],
         ) -> Option<std::collections::BTreeMap<String, String>> {
             for toc_item in toc {
-                if toc_item.id.as_str().eq(id) {
+                if fpm::sitemap::Sitemap::ids_matches(toc_item.id.as_str(), &toc_item.variant, id) {
                     return Some(toc_item.extra_data.to_owned());
                 }
                 if let Some(data) = get_extra_data_from_toc(id, toc_item.children.as_slice()) {

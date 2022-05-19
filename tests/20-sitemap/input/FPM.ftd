@@ -14,6 +14,10 @@ zip: github.com/fifthtry/fpm-sitemap/archive/refs/heads/main.zip
 
 # other: $o-asset.pages.inside.foo.ftd
 
+# other foo url: $o-asset.pages.inside.foo.ftd
+variant: main/
+data: Other foo url with main
+
 
 # Section Title: /
 name: Priyanka
@@ -39,8 +43,8 @@ nav-title: This is nav title of Subsection
   - Other info: $o-asset.pages.info.ftd
 
 
-## Subsection Title 2: subsection/-/arpita/
-variant: arpita
+## Subsection Title 2: subsection/index.html
+variant: arpita/index.html
 name: Arpita
 
 
@@ -55,7 +59,8 @@ nav-title: This is nav title of section 2
 
 
 
-# Section Title 3: /-/index-alias/
+# Section Title 3: /
+variant: index-alias/
 nav-title: This is nav title of section 2
 
 

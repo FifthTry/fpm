@@ -483,9 +483,6 @@ impl Config {
 
     pub(crate) fn get_file_name(root: &camino::Utf8PathBuf, id: &str) -> fpm::Result<String> {
         let mut id = id
-            .split_once("-/")
-            .map(|(id, _)| id)
-            .unwrap_or(id)
             .trim()
             .replace("/index.html", "/")
             .replace("index.html", "/");
