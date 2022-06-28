@@ -4,3 +4,7 @@
 zip: amitu
 language: hi
 translation-of: arpita-jaiswal/blog
+
+-- fpm.dependency: theme.fpm.local as theme
+
+-- fpm.auto-import: theme
