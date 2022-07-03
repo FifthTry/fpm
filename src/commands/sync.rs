@@ -210,12 +210,12 @@ async fn send_to_fpm_serve(
     }
 
     let data = serde_json::to_string(&data)?;
+    let url = format!("{}/-/sync/", fpm::commands::utils::remote_host());
     let mut response = reqwest::Client::new()
-        .post("http://127.0.0.1:8000/-/sync/")
+        .post(url.as_str())
         .header(reqwest::header::CONTENT_TYPE, "application/json")
         .body(data)
         .send()?;
-    dbg!("send_to_fpm_serve", &response.status());
 
     let response = response.json::<ApiResponse>()?;
     if !response.success {

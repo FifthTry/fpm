@@ -1,3 +1,4 @@
+mod cr_about;
 mod fetch_file;
 mod fpm_dot_ftd;
 mod get_data;
@@ -369,6 +370,7 @@ impl Library2 {
                 )
                 .await
             }
+            "cr-about" => fpm::library::cr_about::processor(section, doc, &self.config).await,
             t => unimplemented!("No such processor: {}", t),
         }
     }

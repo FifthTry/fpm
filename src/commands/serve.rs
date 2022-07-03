@@ -1,95 +1,61 @@
-async fn handle_ftd(config: &mut fpm::Config, path: std::path::PathBuf) -> actix_web::HttpResponse {
-    use itertools::Itertools;
-    let dependencies = if let Some(package) = config.package.translation_of.as_ref() {
-        let mut deps = package
-            .get_flattened_dependencies()
-            .into_iter()
-            .unique_by(|dep| dep.package.name.clone())
-            .collect_vec();
-        deps.extend(
-            config
-                .package
-                .get_flattened_dependencies()
-                .into_iter()
-                .unique_by(|dep| dep.package.name.clone()),
-        );
-        deps
-    } else {
-        config
-            .package
-            .get_flattened_dependencies()
-            .into_iter()
-            .unique_by(|dep| dep.package.name.clone())
-            .collect_vec()
-    };
-
-    let mut asset_documents = std::collections::HashMap::new();
-    asset_documents.insert(
-        config.package.name.clone(),
-        config.package.get_assets_doc(config, "/").await.unwrap(),
-    );
-
-    for dep in &dependencies {
-        asset_documents.insert(
-            dep.package.name.clone(),
-            dep.package.get_assets_doc(config, "/").await.unwrap(),
-        );
-    }
-
-    let new_path = match path.to_str() {
-        Some(s) => s.replace("-/", ""),
+async fn serve_files(
+    config: &mut fpm::Config,
+    path: std::path::PathBuf,
+) -> actix_web::HttpResponse {
+    let path = match path.to_str() {
+        Some(s) => s,
         None => {
             println!("handle_ftd: Not able to convert path");
             return actix_web::HttpResponse::InternalServerError().body("".as_bytes());
         }
     };
 
-    let dep_package = find_dep_package(config, &dependencies, &new_path);
+    let (root, path) = if let Some((root, path)) = fpm::cr::get_cr_and_path_from_id(path, &None) {
+        (Some(root.to_string()), path)
+    } else {
+        (None, path.to_string())
+    };
 
-    let f = match config.get_file_by_id(&new_path, dep_package).await {
+    let f = match config
+        .get_file_with_root(path.as_str(), root, Default::default())
+        .await
+    {
         Ok(f) => f,
         Err(e) => {
-            println!("path: {}, Error: {:?}", new_path, e);
-            return actix_web::HttpResponse::InternalServerError().body("".as_bytes());
+            println!("new_path: {}, Error: {:?}", path, e);
+            return actix_web::HttpResponse::InternalServerError().body(e.to_string());
         }
     };
 
     config.current_document = Some(f.get_id());
     return match f {
         fpm::File::Ftd(main_document) => {
-            return match fpm::commands::build::process_ftd(
-                config,
-                &main_document,
-                None,
-                None,
-                Default::default(),
-                "/",
-                &asset_documents,
-                false,
-                None,
-            )
-            .await
-            {
+            return match fpm::package_doc::read_ftd(config, &main_document, "/", false).await {
                 Ok(r) => actix_web::HttpResponse::Ok().body(r),
                 Err(e) => actix_web::HttpResponse::InternalServerError().body(e.to_string()),
             };
         }
+        fpm::File::Image(image) => {
+            return actix_web::HttpResponse::Ok()
+                .content_type(if image.id.ends_with(".svg") {
+                    // infer is guessing wrong mime type in case of svg
+                    "image/svg+xml"
+                } else {
+                    infer::get(image.content.as_slice())
+                        .map(|v| v.mime_type())
+                        .unwrap_or(if image.id.ends_with(".svg") {
+                            "image/svg+xml"
+                        } else {
+                            "image/jpeg"
+                        })
+                })
+                .body(image.content);
+        }
         _ => actix_web::HttpResponse::InternalServerError().body("".as_bytes()),
     };
-
-    fn find_dep_package<'a>(
-        config: &'a fpm::Config,
-        dep: &'a [fpm::Dependency],
-        file_path: &'a str,
-    ) -> &'a fpm::Package {
-        dep.iter()
-            .find(|d| file_path.starts_with(&d.package.name))
-            .map(|x| &x.package)
-            .unwrap_or(&config.package)
-    }
 }
 
-async fn handle_dash(
+/*async fn handle_dash(
     req: &actix_web::HttpRequest,
     config: &fpm::Config,
     path: std::path::PathBuf,
@@ -113,6 +79,17 @@ async fn handle_dash(
     };
 
     server_static_file(req, file_path).await
+}*/
+
+async fn server_fpm_file(config: &fpm::Config) -> actix_web::HttpResponse {
+    let response =
+        match tokio::fs::read(config.get_root_for_package(&config.package).join("FPM.ftd")).await {
+            Ok(res) => res,
+            Err(e) => return actix_web::HttpResponse::NotFound().body(e.to_string()),
+        };
+    actix_web::HttpResponse::Ok()
+        .content_type("application/octet-stream")
+        .body(response)
 }
 
 async fn server_static_file(
@@ -129,22 +106,26 @@ async fn server_static_file(
     }
 }
 async fn serve_static(req: actix_web::HttpRequest) -> actix_web::HttpResponse {
-    let mut config = fpm::Config::read(None).await.unwrap();
+    // TODO: Need to remove unwrap
+    let mut config = fpm::Config::read2(None, false).await.unwrap();
     let path: std::path::PathBuf = req.match_info().query("path").parse().unwrap();
 
+    println!("request for path: {:?}", path);
+
     let favicon = std::path::PathBuf::new().join("favicon.ico");
-    if path.starts_with("-/") {
+    /*if path.starts_with("-/") {
         handle_dash(&req, &config, path).await
-    } else if path.eq(&favicon) {
+    } else*/
+    if path.eq(&favicon) {
         server_static_file(&req, favicon).await
+    } else if path.eq(&std::path::PathBuf::new().join("FPM.ftd")) {
+        server_fpm_file(&config).await
     } else if path.eq(&std::path::PathBuf::new().join("")) {
-        handle_ftd(&mut config, path.join("index")).await
+        serve_files(&mut config, path.join("/")).await
     } else {
-        handle_ftd(&mut config, path).await
+        serve_files(&mut config, path).await
     }
 }
-
-// async fn serve_static(req: actix_web::HttpRequest) -> actix_web::HttpResponse {}
 
 #[actix_web::main]
 pub async fn serve(bind_address: &str, port: Option<u16>) -> std::io::Result<()> {
@@ -155,6 +136,7 @@ pub async fn serve(bind_address: &str, port: Option<u16>) -> std::io::Result<()>
         let fpm_instance: String =
             std::env::var("FPM_INSTANCE_ID").expect("FPM_INSTANCE_ID is required");
 
+        println!("Resolving dependency");
         match crate::controller::resolve_dependencies(fpm_instance, fpm_controller).await {
             Ok(_) => println!("Dependencies resolved"),
             Err(e) => panic!("Error resolving dependencies using controller!!: {:?}", e),
@@ -199,23 +181,53 @@ You can try without providing port, it will automatically pick unused port"#,
         }
     };
 
+    let app = || {
+        {
+            if cfg!(feature = "remote") {
+                let json_cfg = actix_web::web::JsonConfig::default()
+                    .content_type(|mime| mime == mime_guess::mime::APPLICATION_JSON)
+                    .limit(9862416400);
+
+                actix_web::App::new()
+                    .app_data(json_cfg)
+                    .route("/-/sync/", actix_web::web::post().to(fpm::apis::sync))
+                    .route("/-/clone/", actix_web::web::get().to(fpm::apis::clone))
+                    .route("/-/cr/", actix_web::web::post().to(fpm::apis::cr::create))
+            } else {
+                actix_web::App::new()
+            }
+        }
+        .route(
+            "/-/view-src/{path:.*}",
+            actix_web::web::get().to(fpm::apis::view_source),
+        )
+        .route("/-/edit/", actix_web::web::post().to(fpm::apis::edit))
+        .route(
+            "/-/revert/",
+            actix_web::web::post().to(fpm::apis::editor::revert),
+        )
+        .route(
+            "/-/editor-sync/",
+            actix_web::web::get().to(fpm::apis::editor::sync),
+        )
+        .route(
+            "/-/editor-cr/",
+            actix_web::web::post().to(fpm::apis::cr::client_create),
+        )
+        .route("/{path:.*}", actix_web::web::get().to(serve_static))
+    };
+
     println!("### Server Started ###");
     println!(
         "Go to: http://{}:{}",
         bind_address,
         tcp_listener.local_addr()?.port()
     );
-
-    let app = || {
-        if cfg!(feature = "remote") {
-            actix_web::App::new().route("/-/sync/", actix_web::web::post().to(crate::apis::sync))
-        } else {
-            actix_web::App::new().route("/{path:.*}", actix_web::web::get().to(serve_static))
-        }
-    };
-
     actix_web::HttpServer::new(app)
         .listen(tcp_listener)?
         .run()
         .await
 }
+
+// cargo install --features controller --path=.
+// FPM_CONTROLLER=http://127.0.0.1:8000 FPM_INSTANCE_ID=12345 fpm serve 8001

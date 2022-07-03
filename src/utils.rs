@@ -392,3 +392,10 @@ pub(crate) async fn update(
             .await?,
     )
 }
+
+pub(crate) fn path_with_root(path: &str, root: &Option<String>) -> String {
+    match root {
+        Some(root) if !path.starts_with(root) => format!("{}/{}", root.trim_end_matches('/'), path),
+        _ => path.to_string(),
+    }
+}

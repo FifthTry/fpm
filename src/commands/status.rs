@@ -4,27 +4,19 @@ pub async fn status(config: &fpm::Config, source: Option<&str>) -> fpm::Result<(
     let snapshots = fpm::snapshot::get_latest_snapshots(&config.root).await?;
     let workspaces = fpm::snapshot::get_workspace(config).await?;
     match source {
-        Some(source) => {
-            file_status(
-                config.package.name.clone(),
-                &config.root,
-                source,
-                &snapshots,
-                &workspaces,
-            )
-            .await
-        }
+        Some(source) => file_status(config, source, &snapshots, &workspaces).await,
         None => all_status(config, &snapshots, &workspaces).await,
     }
 }
 
 async fn file_status(
-    package_name: String,
-    base_path: &camino::Utf8PathBuf,
+    config: &fpm::Config,
     source: &str,
     snapshots: &std::collections::BTreeMap<String, u128>,
     workspaces: &std::collections::BTreeMap<String, fpm::snapshot::Workspace>,
 ) -> fpm::Result<()> {
+    let package_name = config.package.name.to_string();
+    let base_path = &config.root;
     let path = base_path.join(source);
     if !path.exists() {
         if snapshots.contains_key(source) {
@@ -37,7 +29,7 @@ async fn file_status(
 
     let file = fpm::get_file(package_name, &path, base_path).await?;
 
-    let file_status = get_file_status(&file, snapshots, workspaces).await?;
+    let file_status = get_file_status(config, &file, snapshots, workspaces).await?;
     let track_status = get_track_status(&file, snapshots, base_path.as_str())?;
 
     let mut clean = true;
@@ -60,10 +52,30 @@ async fn all_status(
     snapshots: &std::collections::BTreeMap<String, u128>,
     workspaces: &std::collections::BTreeMap<String, fpm::snapshot::Workspace>,
 ) -> fpm::Result<()> {
+    let (file_status, track_status) = get_all_files_status(config, snapshots, workspaces).await?;
+    let clean_file_status = print_file_status(&file_status);
+    let clean_track_status = print_track_status(&track_status);
+    if !clean_file_status && clean_track_status {
+        println!("Nothing to sync, clean working tree");
+    }
+    Ok(())
+}
+
+pub(crate) async fn get_all_files_status(
+    config: &fpm::Config,
+    snapshots: &std::collections::BTreeMap<String, u128>,
+    workspaces: &std::collections::BTreeMap<String, fpm::snapshot::Workspace>,
+) -> fpm::Result<(
+    std::collections::BTreeMap<String, FileStatus>,
+    std::collections::BTreeMap<String, std::collections::BTreeMap<String, TrackStatus>>,
+)> {
     let mut file_status = std::collections::BTreeMap::new();
     let mut track_status = std::collections::BTreeMap::new();
     for doc in config.get_files(&config.package).await? {
-        let status = get_file_status(&doc, snapshots, workspaces).await?;
+        if doc.get_id().starts_with("-/") {
+            continue;
+        }
+        let status = get_file_status(config, &doc, snapshots, workspaces).await?;
         let track = get_track_status(&doc, snapshots, config.root.as_str())?;
         if !track.is_empty() {
             track_status.insert(doc.get_id(), track);
@@ -81,16 +93,11 @@ async fn all_status(
             .into_iter()
             .map(|v| (v.to_string(), FileStatus::Deleted)),
     );
-
-    let clean_file_status = print_file_status(&file_status);
-    let clean_track_status = print_track_status(&track_status);
-    if !clean_file_status && clean_track_status {
-        println!("Nothing to sync, clean working tree");
-    }
-    Ok(())
+    Ok((file_status, track_status))
 }
 
 pub(crate) async fn get_file_status(
+    config: &fpm::Config,
     doc: &fpm::File,
     snapshots: &std::collections::BTreeMap<String, u128>,
     workspaces: &std::collections::BTreeMap<String, fpm::snapshot::Workspace>,
@@ -125,7 +132,7 @@ pub(crate) async fn get_file_status(
     }
 
     if let Some(timestamp) = snapshots.get(&doc.get_id()) {
-        let path = fpm::utils::history_path(&doc.get_id(), &doc.get_base_path(), timestamp);
+        let path = fpm::utils::history_path(&doc.get_id(), config.root.as_str(), timestamp);
 
         let content = tokio::fs::read(&doc.get_full_path()).await?;
         let existing_doc = tokio::fs::read(&path).await?;
@@ -226,7 +233,7 @@ pub(crate) enum FileStatus {
 }
 
 #[derive(Debug, PartialEq)]
-enum TrackStatus {
+pub enum TrackStatus {
     UptoDate,
     NeverMarked,
     OutOfDate { seconds: u64 },

@@ -601,7 +601,7 @@ impl Sitemap {
             config: &mut fpm::Config,
         ) -> fpm::Result<()> {
             let (file_location, translation_file_location) = if let Ok(file_name) =
-                config.get_file_path_and_resolve(&section.id).await
+                config.get_file_path(&section.id).await
             {
                 (
                     Some(config.root.join(file_name.as_str())),
@@ -663,7 +663,7 @@ impl Sitemap {
         ) -> fpm::Result<()> {
             if let Some(ref id) = subsection.id {
                 let (file_location, translation_file_location) = if let Ok(file_name) =
-                    config.get_file_path_and_resolve(id).await
+                    config.get_file_path(id).await
                 {
                     (
                         Some(config.root.join(file_name.as_str())),
@@ -726,7 +726,7 @@ impl Sitemap {
             config: &mut fpm::Config,
         ) -> fpm::Result<()> {
             let (file_location, translation_file_location) =
-                if let Ok(file_name) = config.get_file_path_and_resolve(&toc.id).await {
+                if let Ok(file_name) = config.get_file_path(&toc.id).await {
                     (
                         Some(config.root.join(file_name.as_str())),
                         Some(config.root.join(file_name.as_str())),

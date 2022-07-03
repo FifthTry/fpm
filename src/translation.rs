@@ -167,6 +167,7 @@ impl TranslatedDocument {
             }
             let tracks = fpm::tracker::get_tracks(config.root.as_str(), &track_path)?;
             if let Some(fpm::Track {
+                filename,
                 last_merged_version: Some(last_merged_version),
                 self_timestamp,
                 ..
@@ -180,7 +181,9 @@ impl TranslatedDocument {
                             translated: translated_document.clone(),
                             last_marked_on: *last_merged_version,
                             original_latest: timestamp,
-                            translated_latest: *self_timestamp,
+                            translated_latest: (*self_timestamp).ok_or(fpm::Error::UsageError {
+                                message: format!("self-timestamp not found for {}", filename),
+                            })?,
                         },
                     );
                     continue;

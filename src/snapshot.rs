@@ -35,7 +35,7 @@ pub(crate) async fn get_latest_snapshots(
         return Ok(Default::default());
     }
 
-    let doc = std::fs::read_to_string(&latest_file_path)?;
+    let doc = tokio::fs::read_to_string(&latest_file_path).await?;
     resolve_snapshots(&doc).await
 }
 
@@ -141,11 +141,25 @@ pub(crate) async fn get_workspace(
     config: &fpm::Config,
 ) -> fpm::Result<std::collections::BTreeMap<String, Workspace>> {
     let latest_file_path = config.root.join(".fpm").join("workspace.ftd");
-    if !latest_file_path.exists() {
+    get_workspace_(&latest_file_path).await
+}
+
+pub(crate) async fn get_cr_workspace(
+    config: &fpm::Config,
+    cr_number: usize,
+) -> fpm::Result<std::collections::BTreeMap<String, Workspace>> {
+    let latest_file_path = config.cr_path(cr_number).join(".fpm").join("workspace.ftd");
+    get_workspace_(&latest_file_path).await
+}
+
+async fn get_workspace_(
+    file_path: &camino::Utf8PathBuf,
+) -> fpm::Result<std::collections::BTreeMap<String, Workspace>> {
+    if !file_path.exists() {
         // TODO: should we error out here?
         return Ok(Default::default());
     }
 
-    let doc = tokio::fs::read_to_string(&latest_file_path).await?;
+    let doc = tokio::fs::read_to_string(&file_path).await?;
     resolve_workspace(&doc).await
 }

@@ -57,7 +57,7 @@ async fn mark_upto_date_translation(
                 package: Some(original_package.name.clone()),
                 version: None,
                 other_timestamp: None,
-                self_timestamp: *self_timestamp,
+                self_timestamp: Some(*self_timestamp),
                 last_merged_version: Some(*original_timestamp),
             },
         );
@@ -118,7 +118,11 @@ async fn write(
     for track in tracks.values() {
         string = format!(
             "{}\n\n-- fpm.track: {}\nself-timestamp: {}",
-            string, track.filename, track.self_timestamp
+            string,
+            track.filename,
+            track.self_timestamp.ok_or(fpm::Error::UsageError {
+                message: format!("self-timestamp not found for {}", track.filename),
+            })?
         );
         if let Some(ref other_timestamp) = track.other_timestamp {
             string = format!("{}\nother-timestamp: {}", string, other_timestamp);

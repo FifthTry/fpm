@@ -43,7 +43,11 @@ async fn write(
     for track in tracks.values() {
         string = format!(
             "{}\n\n-- fpm.track: {}\nself-timestamp: {}",
-            string, track.filename, track.self_timestamp
+            string,
+            track.filename,
+            track.self_timestamp.ok_or(fpm::Error::UsageError {
+                message: format!("self-timestamp not found for {}", track.filename),
+            })?
         );
         if let Some(ref other_timestamp) = track.other_timestamp {
             string = format!("{}\nother-timestamp: {}", string, other_timestamp);

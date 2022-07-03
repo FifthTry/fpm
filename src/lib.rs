@@ -9,13 +9,16 @@ pub(crate) mod utils;
 // Temp comment
 mod apis;
 mod auto_import;
+mod cache;
 mod commands;
 mod config;
 mod controller;
+mod cr;
 mod dependency;
 mod doc;
 mod file;
 mod font;
+mod fs;
 mod i18n;
 mod library;
 mod package_doc;
@@ -31,7 +34,7 @@ pub(crate) use commands::build::process_file;
 pub use commands::{
     abort_merge::abort_merge, build::build, build2::build2, clone::clone, diff::diff,
     mark_resolve::mark_resolve, mark_upto_date::mark_upto_date, revert::revert, serve::serve,
-    serve2::serve2, start_project::start_project, start_tracking::start_tracking, status::status,
+    start_project::start_project, start_tracking::start_tracking, status::status,
     stop_tracking::stop_tracking, sync::sync, translation_status::translation_status,
     update::update,
 };
@@ -63,6 +66,10 @@ fn fpm_ftd() -> &'static str {
 
 fn editor_ftd() -> &'static str {
     include_str!("../ftd/editor.ftd")
+}
+
+fn cr_about_ftd() -> &'static str {
+    include_str!("../ftd/cr-about.ftd")
 }
 
 fn design_ftd() -> &'static str {
@@ -404,7 +411,7 @@ pub enum Error {
     #[error("IoError: {}", _0)]
     IoError(#[from] std::io::Error),
 
-    #[error("IoError: {}", _0)]
+    #[error("ZipError: {}", _0)]
     ZipError(#[from] zip::result::ZipError),
 
     #[error("SerdeJsonError: {}", _0)]
@@ -433,6 +440,12 @@ pub enum Error {
 
     #[error("UTF8Error: {}", _0)]
     UTF8Error(#[from] std::string::FromUtf8Error),
+
+    #[error("ParseIntError: {}", _0)]
+    ParseIntError(#[from] std::num::ParseIntError),
+
+    #[error("GenericError: {}", _0)]
+    GenericError(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

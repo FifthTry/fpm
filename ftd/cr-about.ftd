@@ -1,26 +1,30 @@
 -- import: fpm
 
 
-
 -- editor:
 
 
 
 
+-- optional string about-url:
+$always-include$: true
 
+-- optional string proposed-changes-url:
+$always-include$: true
 
+-- optional string history-url:
+$always-include$: true
 
-
+-- optional integer cr-number:
+$always-include$: true
 
 -- fpm.package-toc-item list fs:
 $processor$: package-tree
 
+-- fpm.cr-about-data cr-about:
+$processor$: cr-about
 
--- optional string content:
-$always-include$: true
-
-
--- optional string path:
+-- string url: -/edit/
 $always-include$: true
 
 
@@ -28,25 +32,15 @@ $always-include$: true
 $always-include$: true
 
 
--- string url: -/edit/
-$always-include$: true
 
 
--- object edit-obj:
+
+-- object cra-obj:
 function: post
-url: $url
-value: $content
-path: $path
-root: $root
-
-
-
--- optional string diff:
-$always-include$: true
-
-
-
--- boolean show-diff: false
+url: -/editor-cr/
+cr-number: $cr-about.cr-number
+description: $cr-about.description
+title: $cr-about.title
 
 
 
@@ -55,7 +49,8 @@ $always-include$: true
 
 
 
--- ftd.column editor:
+
+-- ftd.row editor:
 width: fill
 height: fill
 background-color: $fpm.color.main.background.base
@@ -64,236 +59,55 @@ spacing: 20
 padding: 20
 
 
---- ftd.text: $path
-role: $fpm.type.heading-large
-align: center
-
---- ftd.row:
-spacing: 10
-width: fill
-id: row-id
-spacing: space-between
-
---- ftd.row:
-align: right
-spacing: 10
-
---- sync:
-
---- view:
-
---- ftd.text: Diff
-if: $diff is not null
-padding: 10
-position: center
-border-radius: 8
-color: $fpm.color.main.cta-secondary.text
-background-color: $fpm.color.main.cta-secondary.base
-$on-click$: toggle $show-diff
-
---- container: row-id
-
---- create:
-align: right
-
---- container: ftd.main
-
---- ftd.row:
-width: fill
-if: $show-diff
-
---- ftd.code:
-padding: 10
-width: fill
-background-color: $2b303b
-if: $diff is not null
-lang: diff
-
-$diff
-
-
---- container: ftd.main
-
-
---- ftd.row:
-width: fill
-height: fill
-spacing: 20
-overflow-y: auto
-
 --- print-toc:
 toc: $fs
 
---- ftd.input:
+--- about-page:
+
+
+
+
+
+
+
+
+
+
+
+
+-- ftd.column about-page:
 width: fill
 height: fill
-multiline: true
-placeholder: -- ftd.text: hello world
-value: $content
-border-width: 2
-$on-input$: $content=$VALUE
-$on-input$: message-host $edit-obj
-padding: 20
-
---- container: ftd.main
-
---- create-cr:
-
-
-
-
-
-
-
-
-
-
-
--- optional string create-cr-title:
-$always-include$: true
-
--- optional string create-cr-description:
-$always-include$: true
-
-
--- object create-cr-obj:
-function: post
-url: -/editor-cr/
-title: $create-cr-title
-description: $create-cr-description
-
-
-
--- ftd.row create-cr:
-boolean show: false
-$on-mouse-enter$: $show = true
-$on-mouse-leave$: $show = false
 spacing: 20
 
---- ftd.text: Create CR
-padding: 10
-border-radius: 8
-color: $fpm.color.main.cta-secondary.text
-background-color: $fpm.color.main.cta-secondary.base
-$on-click$: message-host $create-cr-obj
 
 --- ftd.input:
-placeholder: Enter CR title
-$on-input$: $create-cr-title=$VALUE
-padding: 10
-border-radius: 8
-if: $show
+width: fill
+value: $cr-about.title
+placeholder: Enter CR Title
+$on-input$: $cr-about.title = $VALUE
+
 
 --- ftd.input:
+width: fill
+height: percent 40
+value: $cr-about.description
 multiline: true
 placeholder: Enter CR description
-$on-input$: $create-cr-description=$VALUE
-padding: 10
-border-radius: 8
-if: $show
+$on-input$: $cr-about.description = $VALUE
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
--- object sync-obj:
-function: get
-url: /-/editor-sync/
-
-
--- ftd.row sync:
-spacing: 10
-
---- ftd.text: Sync
-padding: 10
-position: center
-border-radius: 8
-color: $fpm.color.main.cta-secondary.text
-background-color: $fpm.color.main.cta-secondary.base
-$on-click$: message-host $sync-obj
-
-
-
-
-
-
-
-
--- object view-obj:
-function: redirect
-url: $path
-
-
-
--- ftd.row view:
-spacing: 10
-
---- ftd.text: View
-padding: 10
-position: center
-border-radius: 8
-color: $fpm.color.main.cta-tertiary.text
-background-color: $fpm.color.main.cta-tertiary.base
-$on-click$: message-host $view-obj
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
--- optional string create-file-path:
-$always-include$: true
-
-
--- object create-obj:
-function: post
-url: $url
-path: $create-file-path
-root: $root
-
-
-
--- ftd.row create:
-spacing: 10
-
---- ftd.input:
-placeholder: Enter file name
-$on-input$: $create-file-path=$VALUE
-padding: 10
-position: center
-border-radius: 8
-
-
---- ftd.text: Create
-$on-click$: message-host $create-obj
+--- ftd.text: Update About
+$on-click$: message-host $cra-obj
 color: $fpm.color.main.cta-primary.text
 background-color: $fpm.color.main.cta-primary.base
 padding: 10
 align: center
 border-radius: 8
+
+
+
+
 
 
 
@@ -324,10 +138,6 @@ root: $root
 
 
 
-
-
-
-
 -- optional string rename-file-path:
 $always-include$: true
 
@@ -351,6 +161,7 @@ root: $root
 
 
 
+
 -- ftd.column print-toc:
 fpm.package-toc-item list toc:
 
@@ -358,6 +169,7 @@ fpm.package-toc-item list toc:
 $loop$: $toc as $obj
 toc: $obj
 is-first: true
+
 
 
 
@@ -377,6 +189,7 @@ function: post
 url: -/revert/
 path: $revert-file-path
 operation: delete
+root: $root
 
 
 
@@ -463,9 +276,6 @@ border-radius: 8
 --- print-toc-item:
 $loop$: $toc.children as $obj
 toc: $obj
-
-
-
 
 
 
@@ -676,4 +486,5 @@ dark: orange
 -- ftd.color 2b303b:
 light: #2b303b
 dark: #2b303b
+
 

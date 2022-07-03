@@ -25,10 +25,59 @@ pub(crate) async fn view_source(req: actix_web::HttpRequest) -> actix_web::HttpR
     }
 }
 
+async fn handle_cr_view(
+    config: &mut fpm::Config,
+    cr_number: usize,
+    path: &str,
+) -> fpm::Result<Vec<u8>> {
+    let cr_root = format!("-/{}", cr_number);
+    config.current_document = Some(format!("{}/{}", cr_root, path));
+
+    if fpm::cr::is_about(path) {
+        let cr_about_ftd = if config.root.join("cra.ftd").exists() {
+            tokio::fs::read_to_string(config.root.join("cra.ftd")).await?
+        } else {
+            fpm::cr_about_ftd().to_string()
+        };
+        let cr_about_content = format!(
+            "{}\n\n-- cr-number:\nvalue: {}\n\n\n-- root: {}\n",
+            cr_about_ftd, cr_number, cr_root
+        );
+        let main_document = fpm::Document {
+            id: "cr-about.ftd".to_string(),
+            content: cr_about_content,
+            parent_path: config.root.as_str().to_string(),
+            package_name: config.package.name.clone(),
+        };
+        return fpm::package_doc::read_ftd(config, &main_document, "/", false).await;
+    }
+
+    handle_editor_view(config, path, Some(cr_root)).await
+}
+
 async fn handle_view_source(path: &str) -> fpm::Result<Vec<u8>> {
     let mut config = fpm::Config::read2(None, false).await?;
-    let file_name = config.get_file_path_and_resolve(path).await?;
-    let file = config.get_file_and_package_by_id(path).await?;
+
+    if let Some((cr_number, cr_path)) = fpm::cr::get_cr_and_path_from_id(path, &None) {
+        return handle_cr_view(&mut config, cr_number, cr_path.as_str()).await;
+    }
+    handle_editor_view(&mut config, path, None).await
+}
+
+async fn handle_editor_view(
+    config: &mut fpm::Config,
+    path: &str,
+    root: Option<String>,
+) -> fpm::Result<Vec<u8>> {
+    let (file_name, _) = config
+        .get_file_path_with_root(path, root.clone(), Default::default())
+        .await?;
+
+    let file_name_with_root = fpm::utils::path_with_root(file_name.as_str(), &root);
+
+    let file = config
+        .get_file_with_root(path, root.clone(), Default::default())
+        .await?;
     let editor_ftd = if config.root.join("e.ftd").exists() {
         tokio::fs::read_to_string(config.root.join("e.ftd")).await?
     } else {
@@ -39,9 +88,14 @@ async fn handle_view_source(path: &str) -> fpm::Result<Vec<u8>> {
         fpm::File::Ftd(_) | fpm::File::Markdown(_) | fpm::File::Code(_) => {
             let snapshots = fpm::snapshot::get_latest_snapshots(&config.root).await?;
             let mut editor_content = format!(
-                "{}\n\n-- source:\n$processor$: fetch-file\npath:{}\n\n-- path: {}\n\n",
-                editor_ftd, file_name, file_name,
+                "{}\n\n-- content:\n$processor$: fetch-file\npath:{}\n\n-- path: {}\n\n",
+                editor_ftd, file_name, file_name_with_root,
             );
+
+            if let Some(ref root) = root {
+                editor_content = format!("{}\n\n\n-- root: {}\n\n", editor_content, root);
+            }
+
             if let Ok(Some(diff)) = get_diff(&file, &snapshots).await {
                 editor_content = format!("{}\n\n\n-- diff:\n\n{}", editor_content, diff);
             }
@@ -51,7 +105,7 @@ async fn handle_view_source(path: &str) -> fpm::Result<Vec<u8>> {
                 parent_path: config.root.as_str().to_string(),
                 package_name: config.package.name.clone(),
             };
-            fpm::package_doc::read_ftd(&mut config, &main_document, "/", false).await
+            fpm::package_doc::read_ftd(config, &main_document, "/", false).await
         }
         fpm::File::Static(ref file) | fpm::File::Image(ref file) => Ok(file.content.to_owned()),
     }

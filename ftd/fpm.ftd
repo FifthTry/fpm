@@ -77,7 +77,7 @@ caption filename:
 optional string package:
 optional string version:
 optional integer other-timestamp:
-integer self-timestamp:
+optional integer self-timestamp:
 optional integer last-merged-version:
 
 
@@ -224,5 +224,33 @@ toc-item list toc:
 optional toc-item current-section:
 optional toc-item current-subsection:
 optional toc-item current-page:
+
+
+
+-- record cr-about-data:
+caption title:
+optional body description:
+integer cr-number:
+
+
+-- optional cr-about-data cr-about:
+
+
+
+-- record cr-delete-data:
+caption filename:
+integer timestamp:
+
+
+-- cr-delete-data list cr-delete:
+
+
+-- record package-toc-item:
+optional string title:
+optional string url:
+optional string path:
+optional string status:
+optional string status-with-last-sync:
+package-toc-item list children:
 
 
