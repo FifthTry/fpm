@@ -521,7 +521,8 @@ id: desktop-container
 overflow-x: auto
 height: calc 100vh
 anchor: window
-left:0
+left if not $open:0
+left if $open: -700
 top:0
 background-color: $fpm.color.main.background.base
 
@@ -754,6 +755,10 @@ package base not found. Package: fifthtry.github.io/doc-site, File: filename.png
 
 --- container: code-container
 
+--- ftd.row:
+width: fill
+id: edit-input
+
 --- ftd.input:
 if: $edits
 width: fill
@@ -769,6 +774,8 @@ color: $fpm.color.main.text
 role: $monospace
 background-color: $fpm.color.main.background.base
 white-space: pre
+
+--- container: edit-input
 
 --- guide-80chars:
 if: $show-guide
@@ -1268,7 +1275,6 @@ width: fill
 id: mobile-container
 align: center
 
-
 --- ftd.iframe:
 src: $path
 height: calc 100vh
@@ -1517,6 +1523,15 @@ height: auto
 function: http  
 method: get 
 url: /-/editor-sync/
+
+
+
+
+
+
+
+
+
 
 -- ftd.row sync:
 spacing: 10
@@ -2401,10 +2416,10 @@ id: iamoverlay
 -- ftd.row guide-80chars:
 border-right: 1
 border-color: $fpm.color.main.border
-height: calc 100vh - 82px
+height: calc 100vh - 52px
 anchor: parent
-top: 43
-left: 634
+top: 0
+left: 619
 width: 10
 z-index: 9999
 
@@ -2776,6 +2791,7 @@ width: fill
 
 
 
+
 -- ftd.column print-cr-toc:
 fpm.toc-item list sample-list:
 width: fill
@@ -2787,35 +2803,6 @@ margin-top if $is-mobile: $fpm.space.space-2
 width: fill
 id: modified-container
 align: center
-
---- ftd.row:
-id: cr-wrap
-spacing: 4
-width: fill
-
---- ftd.row:
-width if $open: 12
-align: center
-
---- ftd.image:
-if: $open
-align: center
-src: $downarrow
-$on-click$: toggle $open
-
---- container: cr-wrap
-
---- ftd.row:
-width if not $open: 12
-align: center
-
---- ftd.image:
-if: not $open
-align: center
-src: $right-arrow
-$on-click$: toggle $open
-
---- container: cr-wrap
 
 --- ftd.text: Modified files
 color: $blue
